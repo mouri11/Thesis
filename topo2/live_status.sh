@@ -6,6 +6,6 @@ timestamp() {
 
 while [ 1 ]
 do
-    echo $1 $(timestamp)
+    echo $(timestamp) $1
     sleep $2
 done
