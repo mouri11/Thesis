@@ -3,7 +3,7 @@
 from mininet.topo import Topo
 from mininet.net import Mininet
 from mininet.cli import CLI
-from mininet.util import dumpNodeConnections
+from mininet.util import dumpNodeConnections,pmonitor
 from mininet.log import setLogLevel
 from time import sleep,time
 import subprocess
@@ -113,29 +113,35 @@ def assignStandby(net,hosts,queues,threads):
 def checkLiveStatus(net,actv,standby,interval):
     node = net.get(standby)
     file = actv + '-status.txt'
-    timeout = interval + 3
+    timeout = 2 * interval
 
     i = 0
     while True:
         if os.path.isfile(file) and os.stat(file).st_size != 0:
-            timestamp = node.cmd('tail -n1 %s | awk \'{print $2}\'' % (file))
-            # timestamp = node.cmd('./read_file.sh %s' % (file))
-            print actv,standby,threading.current_thread().name,timestamp.strip(),type(timestamp)
+            # command = 
+            # timestamp = node.cmd('tail -n1 %s | awk \'{print $1}\'' % (file))[:10]
+            timestamp,error = node.popen('tail -n1 %s | awk \'{print $1}\'' % file).communicate()
+            # timestamp, error = process.communicate()
+            # timestamp = node.cmd('./read_file.sh %s' % (file))[:10]
+            # actv,standby,threading.current_thread().name,type(timestamp) # ,len(timestamp)
+            timestamp = timestamp.splitlines()[1].split(" ")[0]
+            if (int(timestamp) + timeout < int(time())):
+                break
             # if timestamp.strip() == '':
             #     continue
-            if timestamp is not None:
-                if len(timestamp) <= 0:
-                    timestamp = node.cmd('tail -n2 %s | awk \'{print $2}\'' % (file)).splitlines()[0]
-                if (int(timestamp.strip()) + timeout < int(time())):
-                    break
-            # i += 1
+            # if timestamp is not None:
+            #     if len(timestamp) <= 0:
+            #         timestamp = node.cmd('tail -n2 %s | awk \'{print $2}\'' % (file)).splitlines()[0]
+            #     if (int(timestamp) + timeout < int(time())):
+            #         break
+            i += 1
             sleep(interval)
-            # if i >= 5:
-            #     return
+            if i >= 15:
+                return
 
     h1 = net.get('h1')
-    node.cmd('python client.py -i %s -m "%s %s %s"' % (h1.IP(),str(math.ceil(time())),standby,actv))
-    node.cmd('./compu.sh $(tail -n1 %s-comp.txt | awk \'{print $2}\') >> %s-comp.txt &' % (actv,standby))
+    node.cmd('python client.py -i %s -m "%s %s %s"' % (h1.IP(),str(math.ceil(time())),standby,actv)) # .communicate()
+    # node.cmd('./compu.sh $(tail -n1 %s-comp.txt | awk \'{print $2}\') >> %s-comp.txt &' % (actv,standby))
 
     # hosts[standby]['action'] = 'ACTIVE'
     # # hosts[standby]['assoc_node'] = []
@@ -233,6 +239,7 @@ def simpleTest(n,k):
         hosts[standby1]['assoc_node'].append(actv)
         bg_thread = threading.Thread(target=checkLiveStatus,args=(net,actv,standby1,interval))
         # bg_thread = Process(target=checkLiveStatus,args=(net,actv,standby1,interval))
+        bg_thread.daemon = True
         bg_thread.start()
         threads[standby1] = {}
         threads[standby1][actv] = bg_thread
@@ -247,7 +254,8 @@ def simpleTest(n,k):
         # threads[standby2][actv] = bg_thread
         i = (i + 1) % len(standby_q)
 
-    fmt = '{:<4} {:<5} {:<8} {:<16} {:<16}'
+    fmt = '{:<6} {:<7} {:<8} {:<16} {:<18}'
+    print fmt.format('Hosts','Status','Action','Added at','Associated Nodes')
     for i in range(n+k):
         name = 'h' + str(i + 1)
         print fmt.format(hosts[name]['name'],hosts[name]['status'],hosts[name]['action'],hosts[name]['uptime'],hosts[name]['assoc_node'])
