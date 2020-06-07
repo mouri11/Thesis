@@ -44,7 +44,7 @@ def print_hosts(n,k):
             return
 
         orig_stdout = sys.stdout
-        f = open(file,'a')
+        f = open(file,'w')
         sys.stdout = f
 
         print ''
@@ -62,13 +62,13 @@ def print_hosts(n,k):
         print fmt2.format('dead: ',dead_q)
         print fmt2.format('free: ',free_q)
 
-        print threads
+        # print threads
         print thread_flag
 
         print ''
 
-        f.close()
         sys.stdout = orig_stdout
+        f.close()
 
         sleep(4)
 
@@ -113,6 +113,7 @@ def assignStandby(net,interval):
 
 
             threads[actv] = {}
+            threads.pop(actv,None)
 
             active_q.remove(actv)
             dead_q.append(actv)
@@ -129,26 +130,25 @@ def assignStandby(net,interval):
 
             node = net.get(actv_new)
 
-            var = node.cmd('tail -n1 %s-comp.txt | awk \'{print $2}\'' % actv)
-            print var
+            var = node.cmd('tail -n1 %s-comp.txt | awk \'{print $2}\'' % actv).strip()
+            print var,type(var)
             # reassigning standby node as new active node
             standby_q.remove(actv_new)
             active_q.append(actv_new)
             hosts[actv_new]['action'] = 'ACTIVE'
             hosts[actv_new]['assoc_node'] = []
 
-            print 'Before comp...'
-
             # restarting computation and status announcement
             node.cmd('./compu.sh %s >> %s-comp.txt &' % (var,actv_new))
             node.cmd('./live_status.sh %s %s >> %s-status.txt &' % (actv_new,interval,actv_new))
 
-            print 'After comp...'
 
             # removing new active node from other active nodes
             for host in hosts:
                 if hosts[host]['status'] == 'ALIVE' and hosts[host]['action'] == 'ACTIVE' and actv_new in hosts[host]['assoc_node']:
                     hosts[host]['assoc_node'].remove(actv_new)
+
+            print 'After removing from other active nodes....'
 
             # assigning new free node to standby queue
             if len(free_q) > 0:
@@ -166,8 +166,7 @@ def assignStandby(net,interval):
                     while hosts[host]['action'] == 'ACTIVE' and len(hosts[host]['assoc_node']) < 2:
                         standby = standby_q[i]
                         i = (i + 1) % len(standby_q)
-                        # if len(hosts[standby]['assoc_node']) == k or
-                        if standby in hosts[host]['assoc_node'] or len(hosts[standby]['assoc_node']) == k:
+                        if standby in hosts[host]['assoc_node']: # or len(hosts[standby]['assoc_node']) >= k:
                             continue    
                         hosts[host]['assoc_node'].append(standby)
                         hosts[standby]['assoc_node'].append(host)
@@ -210,24 +209,11 @@ def checkLiveStatus(net,actv,standby,interval):
             return
 
         if os.path.isfile(file) and os.stat(file).st_size != 0:
-            # command = 
-            # timestamp = node.cmd('tail -n1 %s | awk \'{print $1}\'' % (file))[:10]
             timestamp,error = node.popen('tail -n1 %s' % file).communicate()
-            # print timestamp
-            # timestamp, error = process.communicate()
-            # timestamp = node.cmd('./read_file.sh %s' % (file))[:10]
-            # actv,standby,threading.current_thread().name,type(timestamp) # ,len(timestamp)
             timestamp = timestamp.split(" ")[0]
             # print timestamp.strip()
             if timestamp != '' and (int(timestamp) + timeout < int(time())):
                 break
-            # if timestamp.strip() == '':
-            #     continue
-            # if timestamp is not None:
-            #     if len(timestamp) <= 0:
-            #         timestamp = node.cmd('tail -n2 %s | awk \'{print $2}\'' % (file)).splitlines()[0]
-            #     if (int(timestamp) + timeout < int(time())):
-            #         break
             # i += 1
             # sleep(interval)
             # if i >= 15:
@@ -247,23 +233,7 @@ def checkLiveStatus(net,actv,standby,interval):
 
     thread_flag[actv][standby] = False
     print 'Ending...:',threading.current_thread().name
-    # node.cmd('./compu.sh $(tail -n1 %s-comp.txt | awk \'{print $2}\') >> %s-comp.txt &' % (actv,standby))
 
-    # hosts[standby]['action'] = 'ACTIVE'
-    # # hosts[standby]['assoc_node'] = []
-    # hosts[actv]['status'] = 'DEAD'
-    # hosts[actv]['action'] = 'FREE'
-    # hosts[actv]['assoc_node'] = []
-    # active_q = queues[0]
-    # standby_q = queues[1]
-    # dead_q = queues[2]
-    # free_q = queues[3]
-    # active_q.remove(actv)
-    # active_q.append(standby)
-    # standby_q.remove(standby)
-    # dead_q.append(actv)
-    # if standby in free_q:
-    #     free_q.remove(standby)
 
 def simpleTest(n,k):
     """Create and test a simple network"""
@@ -298,11 +268,6 @@ def simpleTest(n,k):
         hosts[name]['assoc_node'] = []
         hosts[name]['uptime'] = math.ceil(time())
         free_q.append(name)
-
-        # host.cmd('echo "h' + str(i) + ' `hostname -I`" >> output.txt')
-        # result = h1.cmd('ping -c1 10.%s;echo $?' % i)
-        # net.delHost(host)
-        # print result
 
     interval = 2
 
@@ -358,16 +323,6 @@ def simpleTest(n,k):
             bg_thread.start()
             threads[actv][standby1] = bg_thread
 
-            # standby2 = standby_q[i]
-            # hosts[actv]['assoc_node'].append(standby2)
-            # hosts[standby2]['assoc_node'].append(actv)
-            # # bg_thread = threading.Thread(target=checkLiveStatus,args=(net,actv,standby2,interval))
-            # bg_thread = Process(target=checkLiveStatus,args=(net,actv,standby2,interval))
-            # bg_thread.start()
-            # # threads[actv] = {}
-            # threads[actv][standby2] = bg_thread
-            # i = (i + 1) % len(standby_q)
-
     thread_flag['master'] = {}
     thread_flag['master']['h1'] = True
 
@@ -378,13 +333,6 @@ def simpleTest(n,k):
     threads['master']['h1'] = master_thread
     # print threads
 
-    # print 'hosts: ',hosts
-    # print 'net.hosts: ',net.hosts
-
-    # print_hosts(n,k)
-
-    print_process = subprocess.Popen(args=["lxterminal","--geometry=80x35+160+0", "--command=./printer.sh %s %s" % ((n+k+10),2)])
-
     thread_flag['print'] = {}
     thread_flag['print']['print'] = True
 
@@ -393,6 +341,8 @@ def simpleTest(n,k):
     print_thread.start()
     threads['print'] = {}
     threads['print']['print'] = print_thread
+
+    print_process = subprocess.Popen(args=["lxterminal","--geometry=80x35+160+0", "--command=./printer.sh %s %s" % ((n+k+10),2)])
 
     sleep(7)
     host = net.get('h2')
@@ -415,6 +365,8 @@ def simpleTest(n,k):
     CLI(net)
 
     print 'Stopping background processes...'
+    # thread_flag['print']['print'] = False
+
     for actv in threads:
         for standby in threads[actv]:
             # for standby in actv:
