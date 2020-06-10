@@ -10,3 +10,5 @@ reassigns one of the corresponding standby nodes as the new active node, and man
 ## Issues
 
 Often, assertion errors are thrown when using .cmd(). .popen() is a solution, but not fast enough, which is why the master will not read the correct failed active node. A queue must be implemented on the server side to regulate the rate at which requests are fed to the master node. Some functionalities can be modularized into further functions.
+
+Regular updates on the status of the project can be found [here](https://docs.google.com/document/d/1nu5DaCyusmTI1MsJf_ltdt4ChMOaHcWaL71IBXUBuzY/edit?usp=sharing).
