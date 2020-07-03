@@ -119,13 +119,13 @@ def simpleTest(n,k):
 
     file_list = h1.cmd('ls | grep ^h').splitlines()
     # print file_list
-    # os.remove('./master.txt')
+    os.remove('./master.txt')
 
-    # if file_list != []:
-    #     for file in file_list:
-    #         os.remove(os.path.join('./',file))
+    if file_list != []:
+        for file in file_list:
+            os.remove(os.path.join('./',file))
 
-    interval = 8
+    interval = 10
 
     for i in range(1,n,2):
         actv = 'h' + str(i + 1)
@@ -180,41 +180,6 @@ def simpleTest(n,k):
     print fmt2.format('standby: ',standby_q)
     print fmt2.format('dead: ',dead_q)
     print fmt2.format('free: ',free_q)
-
-    # pid = []
-
-        # result = node.cmd('ping -i %s 10.%s;echo $?' % (interval,hosts[host]['assoc_node'][1:])).splitlines()
-        # _PID = node.cmd('ps aux | grep \"10.%s\" | awk \'{print $2}\'' % hosts[host]['assoc_node'][1:])
-        # pid.push(_PID)
-
-
-    # for host in standby_q:
-    # h1.cmd('./pinging.sh 10.2 2 >> h2.txt &')
-    # # print result
-    # sleep(10)
-    # h2 = net.get('h2')
-    # h2.stop()
-    # h2.terminate()
-
-    # for i in range(4):
-        # for host in standby_q:
-        #     node = net.get(host)
-        #     assoc_node = hosts[host]['assoc_node']
-            # if assoc_node in active:
-            # result = node.cmd('ping -c1 10.%s;echo $?' % assoc_node[1:]).splitlines()
-            # if result[-1] == 2:
-            #     continue
-            # print result
-            # node.cmd('echo \"' + str(time()) + ' ' + assoc_node + ' ' + result[-1] + '\" >> ' + host + '.txt')
-
-        # sleep(4)
-        # dead = random.choice(active_q)
-        # if dead in net.hosts:
-
-    # print 'active: ',active_q
-    # print 'standby: ',standby_q
-    # print 'dead: ',dead_q
-    # print 'free: ',free_q
      
     temp = active_q[:]
     length = len(temp)
@@ -235,14 +200,6 @@ def simpleTest(n,k):
         f.write(msg)
         f.close()
         sleep(4)
-                # print h1.cmd('ping -c1 %s;echo $?' % host.IP())
-                # hosts[dead]['status'] = 'DEAD'
-                # hosts[dead]['action'] = 'FREE'
-                # hosts[dead]['assoc_node'] = []
-                # active_q.remove(dead)
-
-    # for p in threads:
-    #     p.join()
 
     for t in threads:
         t.join()
@@ -257,45 +214,6 @@ def simpleTest(n,k):
     print fmt2.format('dead: ',dead_q)
     print fmt2.format('free: ',free_q)
 
-    # print hosts
-
-    # for i in range(1,n + 1):
-    #     host = net.get('h%d' % (i))
-    #     s = 'echo "h' + str(i) + ' `hostname -I`" >> output.txt'
-    #     # print s
-    #     result = host.cmd(s)
-    #     # print result
-    
-    # s1 = net.get('s1')
-    # h1 = net.get('h1')
-    # h2 = net.get('h2')
-    # h3 = net.get('h3')
-    # h4 = net.get('h4')
-    # for i in range(n + 1,n + k + 1):
-	   #  host = net.addHost('h%s' % i)
-	   #  net.addLink(host,s1)
-	   #  s1.attach('s1-eth%s' % i)
-	   #  host.cmd('ifconfig h%s-eth0 10.%s' % (i,i))
-	   #  host.cmd('echo "h' + str(i) + ' `hostname -I`" >> output.txt')
-	   #  result = h1.cmd('ping -c1 10.%s;echo $?' % i)
-	   #  # net.delHost(host)
-	   #  print result
-
-    # h1.cmd('python server.py -i %s &' % h1.IP())
-    # h3.cmd('python server.py -i %s &' % h3.IP())
-    # h4.cmd('python server.py -i %s &' % h4.IP())
-    # PID = h2.cmd('ps aux | grep "server.py" | grep -v grep | awk \'{print $2}\'').splitlines()
-    # print PID
-    # h2.cmd('python client.py -i %s -m "Hello World"' % h1.IP())
-    # print "Dumping host connections"
-    # dumpNodeConnections(net.hosts)
-    # print "Testing network connectivity"
-    # net.pingAll()
-    
-    # p1.terminate()
-    # h2.cmd('kill -9 %s' % PID)
-    # for no in PID:
-    #     h2.cmd('kill -9 %s' % no)
     CLI(net)
     net.stop()
 
