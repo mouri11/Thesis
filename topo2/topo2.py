@@ -76,150 +76,165 @@ def print_hosts(n,k):
 
 
 def assignStandby(net,interval):
+    print 'Inside master thread...:',threading.current_thread().name
+
     h1 = net.get('h1')
     file = './master.txt'
     # i = 0
-    timer = int(time())
+    h1.cmd('echo %s >> master_log.txt' % int(time()))
+
     while True:
         if thread_flag['master']['h1'] == False:
             print 'Ending master thread...:',threading.current_thread().name
             return
 
-        print 'Inside master thread...:',threading.current_thread().name,'File size: ',os.stat(file).st_size
+        print 'File size: ',os.stat(file).st_size
 
         if os.path.isfile(file) and os.stat(file).st_size != 0:
             print 'Handling Node Failure...'
 
-            master_entry = h1.popen('tail -n2 %s' % file).communicate()[0].split('\n')
+            f = open(file,'r')
+            entry_list = f.readlines()
+            f.close()
             
-            entry_list = []
-            for entry in master_entry:
-                if len(entry) > 0:
-                    entry_list.append(entry.split(" ")[2:])
-                
-            entry_list.sort(key=lambda x:x[0])
-            # print entry_list
+            print entry_list
             
             h1.cmd('echo >> master_log.txt')
-            h1.cmd('echo %s >> master_log.txt' % timer)
             h1.cmd('cat %s >> master_log.txt' % (file))
             open(file,'w').close()
 
-            actv = entry_list[0][2]
-
             if len(entry_list) == 2:
-                while thread_flag[actv][entry_list[0][1]] == True or thread_flag[actv][entry_list[1][1]] == True:
-                    # print 'Thread not stopped'
+                if entry_list[0][-4:].strip() == entry_list[1][-4:].strip():
+                    entry_list.pop(-1)
+
+            for entry in entry_list:
+                entry = entry.strip().split(" ")
+
+
+                actv = entry[-1]
+
+                if hosts[actv]['status'] == 'DEAD':
                     continue
 
-                hosts[entry_list[0][1]]['assoc_node'].remove(actv)
-                hosts[entry_list[1][1]]['assoc_node'].remove(actv)
+                for nodes in thread_flag[actv]:
+                    thread_flag[actv][nodes] = False
+
+                for nodes in hosts[actv]['assoc_node']:
+                    hosts[nodes]['assoc_node'].remove(actv)
+
+                # if len(entry_list) == 2:
+                #     while thread_flag[actv][entry_list[0][1]] == True or thread_flag[actv][entry_list[1][1]] == True:
+                #         # print 'Thread not stopped'
+                #         continue
+
+                    # hosts[entry_list[0][1]]['assoc_node'].remove(actv)
+                    # hosts[entry_list[1][1]]['assoc_node'].remove(actv)
 
 
-            threads[actv] = {}
-            threads.pop(actv,None)
+                threads[actv] = {}
+                threads.pop(actv,None)
 
-            active_q.remove(actv)
-            dead_q.append(actv)
-            hosts[actv]['status'] = 'DEAD'
-            hosts[actv]['action'] = 'FREE'
-            hosts[actv]['assoc_node'] = []
+                active_q.remove(actv)
+                dead_q.append(actv)
+                hosts[actv]['status'] = 'DEAD'
+                hosts[actv]['action'] = 'FREE'
+                hosts[actv]['assoc_node'] = []
 
-            actv_new = entry_list[0][1] # assigning new active node
+                actv_new = entry[-2] # assigning new active node
 
-            # stopping threads started by previous standby node and # removing new active node from other active nodes
-            for host in hosts[actv_new]['assoc_node']:
-                if hosts[host]['status'] == 'ALIVE':
-                    thread_flag[host][actv_new] = False
-                    if actv_new in threads[host]:
-                        threads[host].pop(actv_new,None)
-                    hosts[host]['assoc_node'].remove(actv_new)
+                # stopping threads started by previous standby node and # removing new active node from other active nodes
+                for host in hosts[actv_new]['assoc_node']:
+                    if hosts[host]['status'] == 'ALIVE':
+                        thread_flag[host][actv_new] = False
+                        if actv_new in threads[host]:
+                            threads[host].pop(actv_new,None)
+                        hosts[host]['assoc_node'].remove(actv_new)
 
-            node = net.get(actv_new)
+                node = net.get(actv_new)
 
-            var = node.cmd('tail -n1 %s-comp.txt | awk \'{print $2}\'' % actv).strip()
-            # print var,type(var)
+                var = node.cmd('tail -n1 %s-comp.txt | awk \'{print $2}\'' % actv).strip()
+                # print var,type(var)
 
-            # reassigning standby node as new active node
-            standby_q.remove(actv_new)
-            active_q.append(actv_new)
-            hosts[actv_new]['action'] = 'ACTIVE'
-            hosts[actv_new]['assoc_node'] = []
+                # reassigning standby node as new active node
+                standby_q.remove(actv_new)
+                active_q.append(actv_new)
+                hosts[actv_new]['action'] = 'ACTIVE'
+                hosts[actv_new]['assoc_node'] = []
 
-            # restarting computation and status announcement
-            node.cmd('./compu.sh %s >> %s-comp.txt &' % (var,actv_new))
-            node.cmd('./live_status.sh %s %s >> %s-status.txt &' % (actv_new,interval,actv_new))
-
-            # for host in hosts:
-            #     if hosts[host]['status'] == 'ALIVE' and hosts[host]['action'] == 'ACTIVE' and actv_new in hosts[host]['assoc_node']:
-            #         hosts[host]['assoc_node'].remove(actv_new)
-
-            print 'After removing from other active nodes....'
-
-            # assigning new free node to standby queue
-            if len(free_q) > 0:
-                standby_q.insert(0,free_q[0])
-                hosts[free_q[0]]['action'] = 'STANDBY'
-                free_q.pop(0)
-
-            # ceil(no of active( = 5) * replication factor( = 2) / no . of standby( = 3))
-            # if len(standby_q) > 0:
-            #     k = math.ceil(len(active_q) * 2 / len(standby_q))
-
-            # if len(standby_q) > 0:
-
-            threads[actv_new] = {}
-            thread_flag[actv_new] = {}
-
-            # assigning new standby nodes to replace old one, and keep a consistent replication
-            if len(standby_q) == 0:
-                print '*** ALERT ***'
-                print 'No standby nodes available'
+                # restarting computation and status announcement
+                node.cmd('./compu.sh %s >> %s-comp.txt &' % (var,actv_new))
+                node.cmd('./live_status.sh %s %s >> %s-status.txt &' % (actv_new,interval,actv_new))
 
                 # for host in hosts:
-                #     if host['status'] == 'ALIVE':
-                #         host['assoc_node'] = []
+                #     if hosts[host]['status'] == 'ALIVE' and hosts[host]['action'] == 'ACTIVE' and actv_new in hosts[host]['assoc_node']:
+                #         hosts[host]['assoc_node'].remove(actv_new)
 
-                break
+                print 'After removing from other active nodes....'
 
-            i = 0
-            for host in hosts:
-                if hosts[host]['status'] == 'ALIVE' and hosts[host]['action'] == 'ACTIVE':
-                    while True:
-                        if len(standby_q) == 1 and len(hosts[host]['assoc_node']) >= 1:
-                            break
-                        elif len(hosts[host]['assoc_node']) == 2:
-                            break
+                # assigning new free node to standby queue
+                if len(free_q) > 0:
+                    standby_q.insert(0,free_q[0])
+                    hosts[free_q[0]]['action'] = 'STANDBY'
+                    free_q.pop(0)
 
-                        standby = standby_q[i]
-                        i = (i + 1) % len(standby_q)
-                        if standby in hosts[host]['assoc_node']: # or len(hosts[standby]['assoc_node']) >= k:
-                            continue    
-                        hosts[host]['assoc_node'].append(standby)
-                        hosts[standby]['assoc_node'].append(host)
+                # ceil(no of active( = 5) * replication factor( = 2) / no . of standby( = 3))
+                # if len(standby_q) > 0:
+                #     k = math.ceil(len(active_q) * 2 / len(standby_q))
 
-                        # starts threads on recently assigned standby nodes
-                        thread_flag[host][standby] = True
-                        bg_thread = threading.Thread(target=checkLiveStatus,args=(net,host,standby,interval))
-                        bg_thread.daemon = True
-                        bg_thread.start()
-                        threads[host][standby] = bg_thread
+                # if len(standby_q) > 0:
 
-                        if len(standby_q) == 1:
-                            break
+                threads[actv_new] = {}
+                thread_flag[actv_new] = {}
 
-            # # if len(standby_q) > 0:
-            # for standby in hosts[actv_new]['assoc_node']:
-            #     thread_flag[actv_new][standby] = True
+                # assigning new standby nodes to replace old one, and keep a consistent replication
+                if len(standby_q) == 0:
+                    print '*** ALERT ***'
+                    print 'No standby nodes available'
 
-            #     bg_thread = threading.Thread(target=checkLiveStatus,args=(net,actv_new,standby,interval))
-            #     bg_thread.daemon = True
-            #     bg_thread.start()
-            #     threads[actv_new][standby] = bg_thread
+                    # for host in hosts:
+                    #     if host['status'] == 'ALIVE':
+                    #         host['assoc_node'] = []
 
-            if len(standby_q) == 1:
-                print '*** WARNING ***'
-                print 'Only ONE standby node available'
+                    break
+
+                i = 0
+                for host in hosts:
+                    if hosts[host]['status'] == 'ALIVE' and hosts[host]['action'] == 'ACTIVE':
+                        while True:
+                            if len(standby_q) == 1 and len(hosts[host]['assoc_node']) >= 1:
+                                break
+                            elif len(hosts[host]['assoc_node']) == 2:
+                                break
+
+                            standby = standby_q[i]
+                            i = (i + 1) % len(standby_q)
+                            if standby in hosts[host]['assoc_node']: # or len(hosts[standby]['assoc_node']) >= k:
+                                continue    
+                            hosts[host]['assoc_node'].append(standby)
+                            hosts[standby]['assoc_node'].append(host)
+
+                            # starts threads on recently assigned standby nodes
+                            thread_flag[host][standby] = True
+                            bg_thread = threading.Thread(target=checkLiveStatus,args=(net,host,standby,interval))
+                            bg_thread.daemon = True
+                            bg_thread.start()
+                            threads[host][standby] = bg_thread
+
+                            if len(standby_q) == 1:
+                                break
+
+                # # if len(standby_q) > 0:
+                # for standby in hosts[actv_new]['assoc_node']:
+                #     thread_flag[actv_new][standby] = True
+
+                #     bg_thread = threading.Thread(target=checkLiveStatus,args=(net,actv_new,standby,interval))
+                #     bg_thread.daemon = True
+                #     bg_thread.start()
+                #     threads[actv_new][standby] = bg_thread
+
+                if len(standby_q) == 1:
+                    print '*** WARNING ***'
+                    print 'Only ONE standby node available'
 
 
             # print 'Changing hosts...'
@@ -231,6 +246,10 @@ def assignStandby(net,interval):
         #     break
         sleep(interval)
 
+        if len(standby_q) == 0:
+                    break
+
+    h1.cmd('echo >> master_log.txt')
     thread_flag['master']['h1'] = False
 
     print 'Ending master thread...:',threading.current_thread().name
@@ -391,7 +410,7 @@ def simpleTest(n,k):
 
     i = 0
     while i < 4:
-        sleep(6)
+        sleep(5)
         print 'Choosing a node to kill...',i
         _node = random.choice(active_q)
         if _node not in net.nameToNode:
