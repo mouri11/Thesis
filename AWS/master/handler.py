@@ -26,7 +26,7 @@ def failure_handling():
         file2.write(subprocess.run(['tail','-n','+2',queue_file],stdout=subprocess.PIPE).stdout.decode('utf-8'))
         file2.close()
 
-        file3 = open('master-log.bkp','a')
+        file3 = open('master-log.txt','a')
         file3.write(line)
         file3.close()
 
@@ -47,13 +47,13 @@ def failure_handling():
         hosts[active]['assoc_node'] = []
 
         cmd = 'ssh ' + hosts[standby]['IP'] + ' ./killer.sh ./timeout.py'
-        print('Running',cmd,'...')
+        print('Running ',cmd,'...')
         subprocess.run(cmd.split(" "))
         cmd = 'ssh ' + hosts[standby]['IP'] + ' ./killer.sh ./server.py'
-        print('Running',cmd,'...')
+        print('Running ',cmd,'...')
         subprocess.run(cmd.split(" "))
 
-        standby_q.append(standby)
+        standby_q.remove(standby)
         active_q.append(standby)
         hosts[standby]['action'] = 'ACTIVE'
         hosts[standby]['assoc_node'] = []
@@ -62,6 +62,7 @@ def failure_handling():
         if len(free_q) > 0:
             standby_q.append(free_q[0])
             cmd = 'ssh ' + hosts[free_q[0]]['IP'] + ' ./server.py -i 0.0.0.0 > /dev/null 2>&1 &'
+            print("Running ",cmd,'...')
             subprocess.run(cmd.split(" "))
             hosts[free_q[0]]['action'] = 'STANDBY'
             free_q.pop(0)
@@ -74,7 +75,7 @@ def failure_handling():
         changed = []
         i = 0
         for host in hosts:
-            if hosts[host]['status'] == 'ALIVE' and hosts[host]['ACTION'] == 'ACTIVE':
+            if hosts[host]['status'] == 'ALIVE' and hosts[host]['action'] == 'ACTIVE':
                 while True:
                     if len(standby_q) == 1 and len(hosts[host]['assoc_node']) >= 1:
                         break
@@ -105,6 +106,7 @@ def failure_handling():
                     node_file = 'active'
 
                 cmd = 'rm ' + node_file
+                print('Running ',cmd,'...')
                 subprocess.run(cmd.split(" "))
                 file1 = open(node_file,'a')
                 for node in hosts[host]['assoc_node']:
@@ -112,15 +114,26 @@ def failure_handling():
                 file1.close()
 
                 cmd = 'rsync ' + node_file + ' ' + hosts[host]['IP'] + ':~/'
+                print("Running ",cmd,'...')
                 subprocess.run(cmd.split(" "))
 
+                if node_file == 'active':
+                    cmd = 'rsync master ' + hosts[host]['IP'] + ':~/'
+                    print('Running ',cmd,'...')
+                    subprocess.run(cmd.split(" "))
+
+
         cmd = 'ssh ' + hosts[standby]['IP'] + ' tail -n1 ' + active + '-comp.txt | awk \'{print $2}\''
-        val = subprocess.run(cmd.split(" "),stdout=subprocess.PIPE).stdout.decode('utf-8')
+        val = subprocess.run(cmd.split(" "),stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
         cmd = 'ssh ' + hosts[standby]['IP'] + ' ./compu.sh ' + val + ' > /dev/null 2>&1 &'
+        subprocess.run(cmd.split(" "))
+        cmd = 'ssh ' + hosts[standby]['IP'] + ' ./sendinfo.sh > /dev/null 2>&1 &'
+        print('Running ',cmd,'...')
         subprocess.run(cmd.split(" "))
 
         if len(free_q) != free_len:
             cmd = 'ssh ' + hosts[standby_q[-1]]['IP'] + ' ./timeout.py > /dev/null 2>&1 &'
+            print('Running ',cmd,'...')
             subprocess.run(cmd.split(" "))
 
         if len(standby_q) == 0:
@@ -153,10 +166,51 @@ def alloc_nodes(n,k):
         standby_q.append(free_q[0])
         free_q.pop(0)
 
-    active = active_q[0]
-    standby = standby_q[0]
-    hosts[active]['assoc_node'].append(standby)
-    hosts[standby]['assoc_node'].append(active)
+    i = 0
+    k = 1
+    for actv in active_q:
+        for j in range(k):
+            hosts[actv]['assoc_node'].append(standby_q[i])
+            hosts[standby_q[i]]['assoc_node'].append(actv)
+            i = (i + 1) % len(standby_q)
+
+    hostname = subprocess.run('uname -n'.split(" "),stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
+    ip = subprocess.run('hostname -I'.split(" "),stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
+    
+    if not os.path.exists('./master') or os.stat('./master').st_size == 0:
+        file = open('master','w')
+        file.write("%s    %s\n" % (hostname,ip))
+        file.close()
+
+
+    for actv in active_q:
+        file = open('standby','w')
+        for node in hosts[actv]['assoc_node']:
+            file.write("%s    %s\n" % (node,hosts[node]['IP']    ))
+
+        file.close()
+        cmd = 'rsync standby ' + hosts[actv]['IP'] + ':~/'
+        print('Running ',cmd,'...')
+        subprocess.run(cmd.split(" "))
+
+    for stndby in standby_q:
+        file = open('active','w')
+        for node in hosts[stndby]['assoc_node']:
+            file.write("%s    %s\n" % (node,hosts[node]['IP']    ))
+
+        file.close()
+        cmd = 'rsync active ' + hosts[stndby]['IP'] + ':~/'
+        print('Running ',cmd,'...')
+        subprocess.run(cmd.split(" "))
+        cmd = 'rsync master ' + hosts[stndby]['IP'] + ':~/'
+        print('Running ',cmd,'...')
+        subprocess.run(cmd.split(" "))
+
+
+    #active = active_q[0]
+    #standby = standby_q[0]
+    #hosts[active]['assoc_node'].append(standby)
+    #hosts[standby]['assoc_node'].append(active)
 
     #file1 = open('active','w')
     #file1.write(nodes[0])
@@ -270,13 +324,13 @@ def stop_nodes():
     #file.close()
 
 if __name__ == "__main__":
-    # cmd = './server.py -i 0.0.0.0 &'
-    #print("Running ",cmd,"...")
-    #proc = subprocess.Popen(cmd.split(" "),stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
-    alloc_nodes()
-    #start_nodes()
+    cmd = './server.py -i 0.0.0.0 &'
+    print("Running ",cmd,"...")
+    proc = subprocess.Popen(cmd.split(" "),stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+    alloc_nodes(1,1)
+    start_nodes()
     failure_handling()
-    sleep(10)
+    #sleep(10)
     #stop_nodes()
     #print("Stopping server...")
     #proc.terminate()
